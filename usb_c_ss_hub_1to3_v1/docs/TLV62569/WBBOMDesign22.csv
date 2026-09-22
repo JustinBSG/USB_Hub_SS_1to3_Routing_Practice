@@ -1,0 +1,8 @@
+﻿Part,Manufacturer,Part Number,Quantity,Price ($),Footprint (mm²),Description
+Cin,Taiyo Yuden,MSAST21GAB5475MTNA01,1,0.03223,6.75,Cap: 4.7 µF  Total Derated Cap: 3.6 µF  VDC: 25 V  ESR: 8.21 mΩ  Package: 0805  
+Cout,TDK,C1608X5R0J226M080AC,3,0.07224,4.68,Cap: 22 µF  Total Derated Cap: 53 µF  VDC: 6.3 V  ESR: 3.71 mΩ  Package: 0603  
+L1,Abracon Corporation,ASPI-0530HI-2R2M-T2,1,0.43,54.72,L: 2.2 µH  DCR: 35 mΩ  IDC: 5.5 A  
+U1,Texas Instruments,TLV62569PDDCR,1,0.067,14.82,
+Rpgood,Vishay-Dale,CRCW0402475KFKED,1,0.01,3,Resistance: 475 kΩ  Tolerance: 1.0%  Power: 63 mW  
+Rfbt,Vishay-Dale,CRCW040282K5FKED,1,0.01,3,Resistance: 82.5 kΩ  Tolerance: 1.0%  Power: 63 mW  
+Rfbb,Vishay-Dale,CRCW0402100KFKED,1,0.01,3,Resistance: 100 kΩ  Tolerance: 1.0%  Power: 63 mW  
