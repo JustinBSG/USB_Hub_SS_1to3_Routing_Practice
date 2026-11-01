@@ -1,0 +1,153 @@
+USB-C SuperSpeed Hub — Case C
+================================
+Project Introduction & Design Overview
+Date: 2026-11-02
+Status: Hand-solder prototype BOM & schematic review complete
+
+1. PROJECT PURPOSE
+------------------
+Case C is a compact, host-powered USB-C SuperSpeed (USB 3.1 Gen1 / 5 Gbps) hub.
+It provides:
+  - 1× Type-C upstream (UFP) port that receives power and data from a host
+  - 3× Type-C downstream (DFP) ports for devices
+
+Key constraints:
+  - No onboard MCU
+  - No barrel-jack or external power supply
+  - Powered solely from the host’s 5 V VBUS (typical 7.5–15 W)
+  - Hand-solderable packages (SOT-23, gull-wing, no hot-bar QFN-only converters)
+  - Minimal BOM cost for a quantity-1 prototype (~$56 USD)
+
+Target use: portable USB-C hub for consumer electronics prototypes, audio devices,
+or any system that needs additional SuperSpeed Type-C ports without a separate
+power brick.
+
+2. HIGH-LEVEL ARCHITECTURE
+--------------------------
+                Host (USB-C)
+                     │
+                     ▼
+            ┌─────────────────┐
+            │  HD3SS3220 (U2) │  ← Upstream CC + 10 Gbps SS mux (PORT = UFP)
+            │  + ESD          │
+            └────────┬────────┘
+                     │ SuperSpeed + USB2
+                     ▼
+            ┌─────────────────┐
+            │   TUSB8041A     │  ← 4-port USB 3.1 Gen1 hub (U1)
+            │  (VQFN-64)      │
+            └────────┬────────┘
+         ┌───────────┼───────────┐
+         ▼           ▼           ▼
+   HD3SS3220     HD3SS3220     HD3SS3220   ← Downstream CC + SS mux
+   (U3 DFP)      (U4 DFP)      (U5 DFP)      (PORT = DFP, 3 A advertise)
+         │           │           │
+         ▼           ▼           ▼
+   TPS2553       TPS2553       TPS2553     ← VBUS load switches (~1 A each)
+   (U6)          (U7)          (U8)
+         │           │           │
+         ▼           ▼           ▼
+     Type-C        Type-C        Type-C
+     (J2)          (J3)          (J4)
+
+Power tree (host 5 V only):
+  SYS_5V ──► TLV75533PDYDR (U31, SOT-23-5 DYD) ──► 3.3 V
+           └──► TLV62569PDDCR (U32, SOT-23-6) + 1 µH ──► 1.1 V
+                (PG gates GRSTz of the hub)
+
+3. KEY COMPONENTS
+-----------------
+Data path
+  - TUSB8041ARGCR (U1)     4-port USB 3.1 Gen1 SuperSpeed hub
+  - HD3SS3220RNHR ×4       Integrated CC controller + 10 Gbps 2:1 SS mux
+                           (one UFP, three DFP)
+  - ABM8-24.000 MHz crystal
+
+Power management
+  - TLV75533PDYDR (U31)    5 V → 3.3 V LDO, 500 mA, SOT-23-5 with thermal pad
+                           (quiet rail for hub VDD33 + four HD3SS3220 VCC33)
+  - TLV62569PDDCR (U32)    5 V → 1.1 V synchronous buck, 1.5 MHz, SOT-23-6
+                           sized for 0.70 A (typical hub SuperSpeed load)
+  - XFL4015-102MEB (L32)   1.0 µH shielded inductor
+  - TPS2553DBVR ×3         Downstream VBUS switches, ~1.0 A ILIM each
+  - Optional CSD17313Q2    Reverse-blocking FET on upstream 5 V
+
+Protection & passives
+  - TPD2EUSB30DRTR ×8      Low-capacitance SS ESD (2 per Type-C)
+  - TPD4E05U06DQAR ×4      CC / DP / DM ESD
+  - PESD5V0S1UL ×4         5 V TVS on each Type-C VBUS (also protects 5.5 V abs-max of buck)
+  - 100 nF AC-coupling capacitors on all SuperSpeed TX pairs
+  - Bulk capacitance: 180 µF OS-CON on SYS_5V + local 22 µF on each VBUS
+
+Connectors
+  - Amphenol 124019572112A mid-mount Type-C 24-pin, 5 A rated ×4
+
+4. DESIGN DECISIONS & RATIONALE
+-------------------------------
+Hand-solder focus
+  Both power converters were deliberately chosen in SOT-23 gull-wing packages
+  (TLV75533PDYDR and TLV62569PDDCR) so the board can be assembled with an iron
+  and flux. No WSON/VSON hot-bar parts remain on the power tree.
+
+Why HD3SS3220 instead of a discrete TUSB542?
+  The TUSB542 is a 5 Gbps redriver + 2:1 mux that still requires a separate
+  CC controller to drive its SEL pin. The HD3SS3220 integrates the CC logic
+  and the SuperSpeed mux in one device, eliminating the need for an extra
+  redriver/mux stage on every port. This saves BOM cost, board area, and
+  ~100 mA of 1.8 V current per port. A redriver would only be added later if
+  measured channel loss (long traces, many vias) requires active equalization.
+
+Power sequencing
+  The 1.1 V buck’s power-good (PG) pin is used to hold the TUSB8041A GRSTz
+  low until both 3.3 V and 1.1 V are stable (plus a 1 µF capacitor on GRSTz).
+  This satisfies the hub’s power-on reset timing without an external MCU.
+
+Current budget
+  - 3.3 V rail load ≤ 0.20 A
+  - 1.1 V rail sized for 0.70 A (covers typical 3× SuperSpeed U0 + overhead)
+  - Each downstream VBUS limited to ~1.0 A by the TPS2553; three ports share
+    the remaining host power budget.
+
+5. KNOWN REVIEW ITEMS (from schematic review)
+---------------------------------------------
+- SuperSpeed ESD coverage: the 8× TPD2EUSB30 protect only 2 of the 4 Type-C
+  SuperSpeed pairs per port. CC/DP/DM are covered by TPD4E05U06. SBU pins are
+  unused and unprotected.
+- PESD5V0S1UL is SOD-882 (not SOD-323). Its VBR ≥ 6.4 V, so it does not clamp
+  below the 6.0 V absolute-maximum rating of the TLV62569 / TLV75533.
+- 5 V-only system: a CC short-to-VBUS is 5 V, not 20 V.
+- TUSB8041 datasheet recommends a VBUS ferrite + 100 nF; confirm this is
+  present on the upstream port.
+- Pins on the schematic are functional labels — always verify against the
+  official datasheets before releasing a PCB.
+
+6. FILES & ARTIFACTS
+--------------------
+- BOM (hand-solder rev, TLV75533PDYDR):
+    artifacts/USB-C-SS-Hub-Case-C-BOM-Hand-Solder-TLV75533PDYDR.xlsx
+    Qty-1 ballpark total: $56.21
+- Schematic:
+    artifacts/kicad/USB-C-SS-Hub-Case-C.kicad_pro (KiCad 8 hierarchical)
+    artifacts/USB-C-SS-Hub-Case-C-Schematic.pdf (5-page review)
+
+7. BRING-UP NOTES (HIGH LEVEL)
+------------------------------
+1. Visual + continuity check (no power) — especially QFN thermal pads and
+   differential pairs.
+2. Current-limited 5 V apply; verify 3.3 V and 1.1 V rails and GRSTz timing.
+3. Connect upstream to a USB 3.x host; confirm both “Generic USB SuperSpeed
+   Hub” and “Generic USB 2.0 Hub” appear.
+4. Test each downstream port with a known SuperSpeed device in both cable
+   orientations.
+5. Only then move to targeted signal checks (USB 2.0 chirp/SOF, SuperSpeed
+   LFPS activity) if functional test fails.
+
+8. SUMMARY
+----------
+Case C is a minimal, host-powered, hand-solderable 1-to-3 USB-C SuperSpeed hub
+built around the TUSB8041A and four HD3SS3220 devices. Power conversion uses
+SOT-23 LDO and buck converters so the board can be assembled without hot-air
+or hot-bar equipment. The design prioritizes low BOM cost, correct Type-C
+orientation handling, and reliable power sequencing for a quantity-1 prototype.
+
+End of introduction.
