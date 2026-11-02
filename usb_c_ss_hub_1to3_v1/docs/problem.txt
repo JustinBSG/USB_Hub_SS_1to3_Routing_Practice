@@ -1,0 +1,292 @@
+USB-C SUPERSPEED HUB - COMPONENT SELECTION REVIEW
+============================================================
+Date: 2 November 2026
+Baseline: USB-C-SS-Hub-Case-C-BOM-Hand-Solder.xlsx
+
+Scope: suitability of the selected parts, component combinations,
+ratings, packages and values. This report replaces the previous broad
+error report for the current discussion. Unfinished schematic/PCB work
+and downloaded CAD-library problems are excluded.
+
+CONFIRMED = a specification or BOM-description conflict.
+LIKELY = a mismatch inferred from component specifications; needs validation.
+REVIEW = a selection trade-off or unresolved requirement, not a proven fault.
+UNVERIFIED MPN = the exact orderable part number was not established.
+
+MAIN CONCLUSION
+---------------
+The hub/controller/regulator concept is plausible, but several choices
+should be corrected or qualified before buying components. Highest priorities:
+switch-enable compatibility, current capability, TVS suitability, crystal
+loading, exact inductor identification and connector mechanical compatibility.
+
+01. TPS2553DBVR WITH HD3SS3220: ENABLE-POLARITY MISMATCH
+Status: CONFIRMED for the BOM's proposed direct ID-to-EN use.
+BOM: U3-U8; rows 9-14, especially notes L9-L11.
+
+HD3SS3220 ID asserts low on downstream attachment. TPS2553 enables high.
+These parts are not directly compatible in the connection described by
+the BOM. This does not make TPS2553 an intrinsically unsuitable switch.
+
+Recommendation:
+- Keep TPS2553 only if deliberate inversion/control logic is included.
+- TPS2552DBVR is an active-low alternative worth considering when an
+  active-low enable is required. Do not treat that substitution as a
+  complete solution to hub power control or Type-C discharge requirements.
+- Choose enable polarity, reverse-current behavior and output discharge
+  together. TPS2553 does not provide integrated quick output discharge.
+Sources: [1], [2].
+
+02. ~1 A SWITCH SELECTION DOES NOT SUPPORT 3 A ADVERTISEMENT
+Status: CONFIRMED mismatch between intended port capability and advertisement.
+BOM: U3-U5 CURRENT_MODE notes; U6-U8 and Rilim.
+
+The proposed CURRENT_MODE high setting advertises 3 A. TPS2553 with
+24.9 kohm ILIM is approximately a 1 A solution, not a 3 A solution.
+The family is specified for up to 1.5 A continuous load under applicable
+conditions; changing the ILIM resistor cannot turn it into a 3 A switch.
+
+With 24.9 kohm, the datasheet equations give approximately:
+  Nominal limit:              1.036 A
+  Minimum including 1% R:     0.953 A
+  Maximum including 1% R:     1.130 A
+
+Three 1 A outputs alone require 15 W at 5 V, before the hub's own losses.
+Recommendation: retain the ~1 A switch only for a suitably restricted port
+policy. If 3 A per port is a real requirement, reselect the switches AND
+the power source/budget. A larger connector current rating does not solve it.
+Sources: [1], [2].
+
+03. PESD5V0S1UL IS NOT A SUB-6 V INPUT CLAMP
+Status: CONFIRMED protection-selection and package-description problem.
+BOM: Dtv, row 36; buck note L19.
+
+The '5 V' designation does not mean the device clamps transients at 5 V.
+Its breakdown/clamping characteristics do not establish protection below
+the regulator's 6 V absolute maximum. It is an ESD protection diode, not
+a precision overvoltage limiter.
+
+PESD5V0S1UL package: SOD882 / DFN1006-2, not the listed SOD323.
+TLV62569 input: 5.5 V recommended maximum; 6 V absolute maximum.
+
+Recommendation: correct the package and select an input-protection scheme
+using actual clamping voltage at the relevant surge current, source
+impedance and regulator limits. Consider an overvoltage-disconnecting
+device if the requirement includes sustained overvoltage. Do not simply
+substitute another diode labelled '5 V'.
+Sources: [4], [7].
+
+04. TPD2EUSB30DRTR: QUANTITY AND PACKAGE DESCRIPTION
+Status: CONFIRMED for full connector-side SuperSpeed protection.
+BOM: Uesd_ss, row 34; quantity 8.
+
+This is a two-signal-channel device in the DRT three-pin package,
+not the listed 'SOT-5'. Each Type-C receptacle exposes four SuperSpeed
+differential pairs, or eight signal conductors, before its orientation mux.
+Four receptacles therefore need 32 protected conductors. Eight devices
+cover only 16 conductors.
+
+Recommendation: use 16 of these two-channel devices for all connector-side
+SS lanes, or select an appropriate array combination with equivalent
+coverage. The part itself supports USB 3.0; it is not rejected solely on
+data rate. Recheck channel loading and clamping for any replacement.
+Source: [6].
+
+05. ABM8-24.000MHZ-B2-T WITH TWO 12 pF LOAD CAPACITORS
+Status: LIKELY load-capacitor mismatch; crystal itself is plausible.
+BOM: Y1 and C_y, rows 6-7.
+
+The selected ABM8 variant has the standard 18 pF load specification.
+Two equal 12 pF external capacitors contribute 6 pF in series:
+
+  CL approximately = C1*C2/(C1+C2) + effective stray capacitance
+                   = 6 pF + effective stray capacitance.
+
+Reaching 18 pF would require about 12 pF of effective stray capacitance.
+That must be established, not assumed. Incorrect loading shifts frequency
+and can affect oscillator startup margin.
+
+Recommendation: keep the crystal if its complete frequency budget is
+suitable, but recalculate C_y. As an illustrative calculation only, 2-5 pF
+effective stray capacitance would imply equal capacitors of about 32-26 pF.
+Do not freeze a replacement value without accounting for IC/board loading.
+The '2' option specifies initial +/-20 ppm tolerance; it is not the full
+temperature, aging and load-error budget.
+Sources: [3], [8].
+
+06. XFL4015-102MEB: EXACT INDUCTOR PART NUMBER NOT VERIFIED
+Status: UNVERIFIED MPN / likely catalog-number error.
+BOM: L32, row 20.
+
+Coilcraft's current XFL4015 table lists 0.18, 0.33, 0.47, 0.70 and 1.2 uH
+values. It does not list the BOM's XFL4015-102 1.0 uH option. An exact-part
+search did not establish an official listing. This is not proof that a
+custom or historical part never existed, but the BOM entry is not verified.
+
+Recommendation: obtain an official datasheet/orderable number before
+purchase. Coilcraft XFL4020-102 is a documented 1.0 uH candidate; verify
+its full suffix, dimensions, height and current ratings before selecting it.
+Do not silently change 4015 to 4020 and assume identical mechanics.
+
+The numerical choice of 1 uH is not automatically an error. At nominal
+5 V input, 1.1 V output, 1.5 MHz and 0.7 A load:
+  Ideal inductor ripple approximately 0.572 A peak-to-peak.
+  Ideal peak current approximately 0.986 A.
+Final selection must also cover tolerance, startup, faults, heating and
+the regulator's supported inductor/output-capacitor combinations.
+Sources: [4], [9], [10].
+
+07. TLV75533PDBVR: THERMAL MARGIN AT 200 mA
+Status: REVIEW; valid voltage/current selection, conditional thermal suitability.
+BOM: U31, row 16, load assumption <=0.20 A.
+
+At 5 V input and 3.3 V / 0.2 A output, dissipation is approximately 0.34 W.
+TI gives DBV junction-to-ambient figures of 100.8 C/W on its EVM and
+231.1 C/W under the stated JEDEC test conditions. Applied illustratively,
+these give roughly 34 C and 79 C temperature rises. Neither is a prediction
+for this project's thermal environment.
+
+Recommendation: retain DBV only after checking maximum input, actual load,
+ambient and copper-dependent thermal performance. The 500 mA headline is
+not a promise of 500 mA at every input/output voltage and ambient.
+The DYD variant has improved thermal performance but an exposed thermal
+pad, adding an assembly requirement. It is not an interchangeable
+hand-soldering assumption merely because both packages are called SOT-23-5.
+Source: [5].
+
+08. 124019572112A: CONNECTOR / BOARD-THICKNESS COMPATIBILITY
+Status: CONFIRMED catalog/BOM conflict; confirm against the controlled drawing.
+BOM: J1-J4, rows 30-33; board specification row 44.
+
+Amphenol identifies this part as a mid-mount, dual-row SMT Type-C connector.
+Its product page lists a PCB thickness range of 0.80-1.20 mm, while the BOM
+specifies a 1.6 mm board. This is a mechanical component-selection issue,
+independent of whether routing has been completed.
+
+Recommendation: verify the exact mechanical drawing. Select a connector
+explicitly compatible with the intended 1.6 mm board, or deliberately
+change the board thickness. For manual assembly, inspect access to both
+contact rows; through-hole shell tabs do not make every signal pin accessible.
+Do not substitute a USB2-only Type-C connector for this SuperSpeed application.
+Source: [11].
+
+09. BLM18PG300SN1D: CURRENT AND DC-RESISTANCE MARGIN
+Status: REVIEW; BOM resistance assumption is not the worst-case rating.
+BOM: FB32, row 25.
+
+Murata lists BLM18PG300SN1 with 1 A rated current and 0.05 ohm maximum
+DC resistance. The BOM uses approximately 0.04 ohm and asks for <0.05 ohm.
+At 0.7 A, 0.05 ohm causes a 35 mV drop. The nominal 1.096 V regulator
+setting would then be approximately 1.061 V after the bead, before other
+tolerances and transient effects. This alone is not a demonstrated failure.
+
+Recommendation: check maximum rail current and voltage margin using
+maximum DCR, not only a typical value. A lower-DCR/higher-current bead can
+improve margin, but its impedance and resonance with capacitors must also
+be suitable. Do not choose a replacement only by its 100 MHz impedance.
+Source: [12].
+
+10. QFN, USON, 0402 AND MID-MOUNT PARTS: ASSEMBLY FIT
+Status: CONFIRMED limitation if 'hand solder' means iron-only assembly.
+BOM: TUSB8041A, HD3SS3220, ESD arrays, small passives and connectors.
+
+Changing the two regulators to SOT-23 does not make the whole BOM equally
+easy to assemble. The hub/mux packages include inaccessible underside pads;
+some protection devices and passives are very small.
+
+Recommendation: retain these ICs if stencil/reflow or suitable hot-air
+assembly is available. Otherwise consider preassembled modules or outsourced
+assembly. Larger 0603/0805 passives may help where electrically appropriate,
+but they are not a blanket replacement rule for every high-speed node.
+Sources: [1], [3], [6], [11].
+
+11. TLV62569PDDCR: KEEP THE PG VARIANT; VERIFY FILTER COMBINATION
+Status: CONDITIONALLY SUITABLE, not a confirmed bad regulator choice.
+BOM: U32, row 19; L32, C32o, R32t/R32b.
+
+The selected PDDC device is a six-pin SOT-23 buck with power-good output.
+It can support the intended nominal 1.1 V supply. A non-PG DBV variant
+would not preserve the specified reset-control function.
+
+124 kohm / 150 kohm sets approximately 1.096 V using the 0.6 V reference.
+The 150 kohm bottom resistor is within the datasheet's 200 kohm guideline.
+TI specifies validated L/C combinations; check the chosen effective output
+capacitance with 1 uH at 1.1 V rather than selecting L from frequency alone.
+
+Recommendation: keep the selected buck provisionally; qualify its complete
+filter and transient performance. Correct the BOM's '5.5 V absolute max'
+note: 5.5 V is the operating input limit; absolute maximum is 6 V.
+Source: [4].
+
+12. HIGH-CAPACITANCE MLCCS AND 6.3 V INPUT CAPACITORS
+Status: REVIEW / exact manufacturer records not verified for every MPN.
+BOM: C31i, C31o, C32i, C32o, C32h, C10u.
+
+Do not assume the marked capacitance is available under DC bias. The
+0402 10 uF and 0603 high-capacitance selections particularly warrant review.
+For 5 V input capacitors, a 6.3 V rating also gives limited transient margin.
+Neither fact proves a capacitor is wrong by itself.
+
+Recommendation: obtain the exact Murata part record and bias curves for
+each selected MPN, including GRM155R70J106ME15D and GRM188R70J226ME47D,
+whose exact manufacturer listings were not established in this review.
+Verify minimum effective capacitance, dielectric, dimensions and ratings.
+Consider larger-case or higher-voltage parts when the effective capacitance
+or voltage margin is inadequate. Do not approve a guessed MPN based on
+its apparent encoding.
+
+13. 180 uF INPUT BULK AND CSD17313Q2 REVERSE-BLOCKING ROLE
+Status: REVIEW of component roles, not proof either individual part is faulty.
+BOM: Cbulk row 41, Q1 row 29, input VBUS capacitance row 40.
+
+A 180 uF capacitor is not automatically wrong, but it creates substantial
+input charging demand. Its selection needs a compatible inrush-limited
+power path. Likewise, a single N-channel MOSFET described as 'gate from
+VBUS detect' is not, on its own, a validated high-side reverse-blocking choice.
+
+Recommendation: select input capacitance together with the input switch or
+eFuse. If retaining Q1, validate gate-drive headroom, body-diode orientation
+and reverse-blocking operating states. Otherwise select an integrated
+solution with the required inrush and reverse-current functions.
+
+WHAT I WOULD KEEP PROVISIONALLY
+------------------------------
+- TUSB8041ARGCR as the 5 Gbps hub, provided its package is assemblable.
+- HD3SS3220 as the CC/orientation-mux function, with a compatible port policy.
+- TLV62569PDDCR as the core buck, after filter/thermal checks.
+- TLV75533PDBVR only if the thermal estimate supports the actual conditions.
+- ABM8-24.000MHZ-B2-T, with corrected/validated load capacitors.
+- TPD2EUSB30DRTR as a candidate ESD device, with corrected coverage/package.
+
+These are provisional selections, not a blanket approval of every BOM MPN.
+No component replacement has been applied to the original workbook.
+
+MANUFACTURER REFERENCES
+-----------------------
+[1] TI HD3SS3220
+https://www.ti.com/lit/ds/symlink/hd3ss3220.pdf
+[2] TI TPS2552/TPS2553 family
+https://www.ti.com/lit/ds/symlink/tps2553.pdf
+[3] TI TUSB8041A
+https://www.ti.com/lit/ds/symlink/tusb8041a.pdf
+[4] TI TLV62569 / TLV62569P
+https://www.ti.com/lit/ds/symlink/tlv62569.pdf
+[5] TI TLV755P
+https://www.ti.com/lit/ds/symlink/tlv755p.pdf
+[6] TI TPD2EUSB30
+https://www.ti.com/lit/ds/symlink/tpd2eusb30.pdf
+[7] Nexperia PESD5V0S1UL
+https://assets.nexperia.com/documents/data-sheet/PESD5V0S1UL.pdf
+[8] Abracon ABM8 specifications and ordering code
+https://abracon.com/Resonators/abm8.pdf
+[9] Coilcraft XFL4015 catalog
+https://www.coilcraft.com/getmedia/84927b8b-f089-421b-a7f4-a0fa23afe908/xfl4015.pdf
+[10] Coilcraft XFL4020-102 candidate
+https://www.coilcraft.com/en-us/products/power/shielded-inductors/molded-inductor/xfl/xfl4020/xfl4020-102/
+[11] Amphenol 124019572112A product specifications
+https://www.amphenol-cs.com/product/124019572112a.html
+[12] Murata ferrite-bead component list
+https://www.murata.com/-/media/webrenewal/tool/library/common-pdf/static-model/component-list-fb-s-2602.ashx?cvid=20260515010000000000&la=en-sg
+
+END OF COMPONENT SELECTION REVIEW
+
