@@ -1,0 +1,120 @@
+USB-C SS Hub Case C — Why Certain Review Items Remain Unchanged
+================================================================
+Date: 2 November 2026
+Workbook: USB-C-SS-Hub-Case-C-BOM-Hand-Solder-Corrected-R2.xlsx
+Source review: problem-2.txt
+
+Scope of this note
+------------------
+Round 2 corrected confirmed documentation, formula, and label errors
+(DNP-column misuse, conflicting CURRENT_MODE text, hard-coded ESD
+calculations, absolute-max wording, crystal arithmetic, standoff
+description, ILIM label, Isat criterion, Q1 policy note).
+
+The items below were intentionally left unchanged. They are conditional
+selection risks, require measured prototype data, or are outside a
+pure BOM-text update. Changing them without that data would risk
+introducing new errors.
+
+Unchanged items and reasons
+---------------------------
+
+11. PESD5V0S1UL remains ESD-only (not low-voltage OVP)
+    Status: HIGH / CONDITIONAL SELECTION RISK
+    Why unchanged:
+    - Package and “ESD only” description are already correct.
+    - VBR ≥ 6.4 V and high VCL do not guarantee clamping below the
+      TLV62569 6 V absolute maximum.
+    - Replacing it with a different TVS requires a verified clamping
+      curve at the expected surge current, source impedance, and
+      layout. A generic “lower-VCL” suggestion is not a qualified
+      drop-in.
+    Action still required:
+    Keep for ESD if that is the only requirement. Add a separate OVP
+    or eFuse if sustained over-voltage protection is a real need.
+    Validate on the first prototype.
+
+12. LDO thermal margin (TLV75533PDBVR at 0.34 W)
+    Status: MEDIUM / CONDITIONAL
+    Why unchanged:
+    - 0.2 A / 1.7 V drop = 0.34 W is correct arithmetic.
+    - TI θJA figures (100.8 °C/W EVM, 231.1 °C/W JEDEC) are
+      illustrative only; they are not a prediction for this board’s
+      copper, vias, ambient, or airflow.
+    - Switching to the DYD (exposed-pad) package improves thermal
+      performance but adds an assembly requirement that contradicts
+      the pure-iron hand-solder goal for the converters.
+    Action still required:
+    Measure junction temperature (or case temperature + θJC) on the
+    first board at maximum load and ambient. Retain DBV only if the
+    result stays inside the safe operating area.
+
+13. Ferrite bead DCR (BLM18PG300SN1D)
+    Status: MEDIUM / CONDITIONAL
+    Why unchanged:
+    - Murata maximum DCR is 0.05 Ω. The BOM note “DCR < 50 mΩ” is
+      therefore slightly stricter than the guaranteed maximum.
+    - At 0.7 A the worst-case drop is 35 mV (1.096 V → ~1.061 V).
+      This alone does not prove a functional failure for the 1.1 V
+      rail.
+    Action still required:
+    Use maximum DCR and maximum rail current in the voltage-budget
+    calculation. Replace only if the margin is inadequate after
+    including regulator tolerance, transient droop, and layout IR drop.
+
+14. High-capacitance MLCC exact MPNs and DC-bias effective capacitance
+    Status: MEDIUM / UNVERIFIED EXACT PARTS
+    Why unchanged:
+    - Failure to locate an exact manufacturer record in a quick search
+      is not proof that GRM188R70J106ME47D, GRM188R70J226ME47D, or
+      GRM155R70J106ME15D are invalid.
+    - Marked capacitance is not effective capacitance under DC bias.
+      Bias curves must come from Murata for the exact ordering code.
+    Action still required:
+    Verify each MPN against the current Murata catalog and obtain the
+    bias derating curve. Use the minimum effective capacitance in the
+    regulator stability calculation. Do not silently substitute a
+    similar-looking code.
+
+15. Hand-solder suitability (QFN / USON / 0402)
+    Status: MEDIUM / CONDITIONAL ASSEMBLY RISK
+    Why unchanged:
+    - The Spec sheet already limits the “hand-solder” claim to the two
+      SOT-23 converters.
+    - Rejecting otherwise suitable ICs solely because the workbook name
+      contains “Hand-Solder” would force a larger redesign without
+      solving the electrical issues.
+    Action still required:
+    Confirm hot-air, stencil/reflow, or outsourced assembly for the
+    TUSB8041A, HD3SS3220, and small ESD arrays. Pure iron is not
+    reliable for inaccessible thermal pads.
+
+16. Source budget, switch thresholds, and input components
+    Status: MEDIUM / CONDITIONAL POWER SELECTION RISK
+    Why unchanged:
+    - The BOM already states ~1 A per port and Default USB current
+      advertisement. Three ports at that level can exceed a 7.5 W host.
+    - The 180 µF bulk and optional N-FET reverse-block path are
+      interdependent; changing one without the other can create new
+      inrush or reverse-current problems.
+    Action still required:
+    State an aggregate load/source assumption in the Spec sheet.
+    Validate inrush with the chosen bulk capacitor and confirm the
+    reverse-blocking state of Q1 (or replace with an integrated
+    solution) before production.
+
+Summary
+-------
+The Round-2 workbook is now consistent on the items that could be
+corrected from datasheet text and arithmetic alone. The remaining items
+require either (a) measured prototype data or (b) a deliberate system-
+level decision (OVP requirement, host power budget, assembly process).
+Leaving them unchanged avoids introducing unverified substitutions
+while keeping the open risks visible in the notes.
+
+References (same as problem-2.txt)
+----------------------------------
+[3] TLV62569 datasheet — recommended vs absolute maximum
+[7] PESD5V0S1UL datasheet — VBR / VCL
+[8] TLV755P thermal information
+[9] Murata ferrite-bead specifications
