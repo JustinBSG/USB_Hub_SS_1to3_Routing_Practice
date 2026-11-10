@@ -1,0 +1,175 @@
+USB-C SS 1-to-3 Hub — open problems
+Updated: 10 Nov 2026 (HKT)
+Baseline: R5 hand-solder BOM
+  usb_c_ss_hub_1to3_v1/docs/USB-C-SS-Hub-Hand-Solder-BOM.xlsx
+  commit e4aba911aab2bfe792397b3cfb80a50b50b6af2b
+
+Scope: electrical, power-policy, assembly, and documentation issues from the BOM review.
+Library footprint/symbol mismatches are intentionally omitted here and should be fixed separately before schematic capture.
+Schematic and PCB are still empty starter files. Nothing below is bench-verified.
+
+--------------------------------------------------------------------------------
+P1  Startup slew conflicts with HD3SS3220 supply requirements  [must fix first]
+--------------------------------------------------------------------------------
+TPS259470A C30dvdt = 100 nF. TI's dV/dt equation gives roughly 0.02 V/ms, or about 250 ms to reach 5 V.
+HD3SS3220 requires VDD5 ramp time no longer than 25 ms (datasheet power-on timings / §5.3, §6.3.12).
+The spreadsheet already flags this.
+
+Reducing the capacitor is not enough by itself. With open-drain signals pulled to 3.3 V, HD3SS3220 also requires the prescribed VDD5/VCC33 sequence, or ENn_CC held high until both rails are stable plus the specified delay. Upstream U2 currently has ENn_CC grounded, and its standby LDO starts from the same ramping SYS_5V. The BOM does not show that this meets the timing.
+
+Resolve startup as one circuit before choosing the final slew capacitor:
+  - a small controlled standby/detection supply
+  - a separately enabled bulk/main power path after valid source-current detection
+  - keep the 180 uF reservoir behind controlled switching
+  - include every capacitor actually charged at startup
+
+For perspective, charging 180 uF through 5 V in 25 ms averages 36 mA; other capacitors and operating loads add to that, and peak current depends on the real ramp.
+If a dV/dt capacitor greater than 10 nF remains, the current TPS25947 datasheet also recommends a 100 ohm series resistor; none is listed.
+
+Sources:
+  https://www.ti.com/lit/ds/symlink/hd3ss3220.pdf
+  https://www.ti.com/lit/ds/symlink/tps25947.pdf  (§7.3.5.1, eqs. 3–4)
+
+--------------------------------------------------------------------------------
+P2  Downstream VBUS has no defined discharge path  [must fix first]
+--------------------------------------------------------------------------------
+U6–U8 are TPS2552DBVR, which do not provide quick output discharge.
+Each downstream port has 22 uF, but no explicit discharge resistor or switched discharge circuit is allocated.
+
+HD3SS3220 holds ID high until downstream VBUS has fallen to vSafe0V before enabling a new source attachment.
+Do not depend on incidental leakage on a disconnected, lightly loaded output. Rapid unplug/replug can become unreliable.
+
+Add three deliberate VBUS-discharge paths, sized against detach timing, actual effective output capacitance, and dissipation.
+A passive bleeder may suffice if timing and continuous consumption are acceptable; otherwise use switched discharge or revise the power-switch selection, and recheck enable polarity and fault behavior.
+
+TPS2552 reverse-voltage protection is not instantaneous ideal-diode isolation: TI describes a reverse-current interval before shutdown.
+The upstream eFuse helps protect the host but does not eliminate every downstream cross-feed transient. Check powered-device / backfeed cases.
+
+Sources:
+  https://www.ti.com/lit/ds/symlink/tps2553.pdf  (Table 4-1, §8.3.2, §8.3.7)
+  HD3SS3220 §6.3.1 note
+
+--------------------------------------------------------------------------------
+P3  Power policy is deliberately restrictive  [confirm intent]
+--------------------------------------------------------------------------------
+R5 requires an upstream USB-C data port advertising 3 A. Default-current and 1.5 A sources leave the main hub disabled.
+No PD controller is implemented; none is inherently required for this fixed-5 V, CC-advertised-current architecture.
+
+Planned normal-load budget:
+  3 ports x 0.50 A = 1.50 A
+  Board-electronics allowance = 0.50 A (planning figure, not a measured maximum)
+  Normal aggregate allowance = 2.0 A
+  Input eFuse nominal limit ~2.5 A
+
+The 43.2 kOhm TPS2552 settings give about 0.544–0.673 A per port, including the spreadsheet's 1% resistor allowance.
+That does not provide the 900 mA expected by some USB 3 high-power peripherals.
+Default USB CC advertisement is not a custom "500 mA maximum" advertisement.
+An SSD or similar device can enumerate and then trip a port when its operating current rises.
+
+Do not return to the older workbook/introduction's "3 A advertisement on each downstream port."
+R5 already changed all three downstream CURRENT_MODE straps to Default USB.
+
+"Configure honest bus-powered power descriptors" is listed, but no supported descriptor mechanism or image is identified.
+Do not assume an EEPROM automatically sets bus/self-power or bMaxPower. Confirm the exact TUSB8041A reporting capability if standards compliance is a goal.
+
+Source:
+  https://www.ti.com/lit/ds/symlink/tusb8041a.pdf  (§10.2 discusses up to 900 mA per downstream port)
+
+--------------------------------------------------------------------------------
+P4  HD3SS3220 source-current detection coding is inconsistent  [resolve before enable logic]
+--------------------------------------------------------------------------------
+The HD3SS3220 pin description says OUT2 low indicates 3 A, but Table 6-3 also lists OUT1=H / OUT2=L as Default.
+This is an internal datasheet inconsistency, not a bench-proven fault.
+R5 enables the main path from OUT2 alone.
+Resolve this with TI, or use both pulled-up outputs and qualify the documented 3 A combination OUT1=L, OUT2=L.
+That would revise U34 logic and all OUT2-based enables, not just a note.
+
+Source: HD3SS3220 pin description vs Table 6-3, p17.
+
+--------------------------------------------------------------------------------
+P5  Four logical hub ports vs three physical connectors  [open design task]
+--------------------------------------------------------------------------------
+TUSB8041A is the correct class of device: four downstream ports, 5 Gbps shared upstream bandwidth
+(not 10 Gbps just because the mux is rated 10 Gbps). Three physical outputs are fine.
+Reset defaults enable all four logical ports. To report only three, add a documented configuration method.
+Optional 2 kbit-or-larger I2C EEPROM in an accessible package, bypass, bus pull-ups and programming access are worth reserving; no MCU is inherently required.
+
+--------------------------------------------------------------------------------
+P6  "Hand-solder" still requires reflow or hot-air capability  [process risk]
+--------------------------------------------------------------------------------
+SOT-23 regulators, logic and switches are helpful, but the board is still dominated by:
+  - TUSB8041A 64-pin VQFN with exposed pad
+  - four HD3SS3220 30-pin WQFN
+  - TPS259470A 10-pin VQFN-HR
+  - TPD4E05U06 USON arrays
+  - small leadless ESD diodes and many 0402 passives
+  - four dual-row, fine-pitch, mid-mount USB-C connectors
+
+This is not a comfortable iron-only first assembly.
+Plan stencil/paste, controlled hot air or reflow, magnification, flux, wick, and a current-limited supply.
+Targeted assembly of the difficult ICs is another option.
+Exposed pads need a soldering / thermal-via plan.
+
+The Amphenol C12401957 drawing (distributor mirror) shows 0.5 mm contact pitch, 0.30 mm recommended pad widths, dual rows, shell anchors and a board cutout.
+Check access to both solder rows before committing to this connector.
+Do not assume 1.0 mm board thickness from the spreadsheet's "0.8–1.2 mm preferred" note; derive thickness, cutout and body clearance from the actual mechanical drawing.
+
+--------------------------------------------------------------------------------
+P7  3.3 V LDO thermal margin is unproven  [check in layout]
+--------------------------------------------------------------------------------
+TLV75533PDBVR at 0.20 A from 5 V to 3.3 V dissipates about 0.34 W.
+DBV is the ordinary package, not the thermally enhanced DYD variant still mentioned in the introduction.
+Do not apply DYD thermal resistance to DBV.
+500 mA electrical capability does not mean 500 mA is thermally comfortable here.
+Qualify with the actual copper, layout and ambient.
+
+Source: https://www.ti.com/lit/ds/symlink/tlv755p.pdf  (§5.4 and thermal discussion)
+
+--------------------------------------------------------------------------------
+P8  Reset / PG monitors the buck feedback node, not the hub rail
+--------------------------------------------------------------------------------
+TPS3808G33 monitoring 3.3 V, with buck PG into MR, then reset release after 12–28 ms with CT open, is a sensible scheme.
+The hub requires at least 3 ms after both rails are valid, so the delay is nominally ample.
+But PG monitors the buck feedback node, not the post-bead hub rail. Check brownout and load-step behavior at the TUSB8041A pins.
+Cgrst is already quantity zero / DNP; do not add the old 1 uF reset capacitor.
+
+FB32 can drop 35 mV at 0.7 A using its stated 50 mOhm maximum DCR.
+TUSB8041A permitted VDD is 0.99–1.26 V, so this is not automatically a failure, but close the full tolerance/transient budget at the hub pins.
+The 700 mA core-current figure is an allowance, not a datasheet worst case (typical three-SS-device U0 draw is 563 mA).
+
+Sources:
+  https://www.ti.com/lit/ds/symlink/tps3808.pdf
+  https://www.ti.com/lit/ds/symlink/tlv62569.pdf
+  TUSB8041A §§7.3, 7.7, 10.1
+
+--------------------------------------------------------------------------------
+P9  Crystal load capacitors are still provisional
+--------------------------------------------------------------------------------
+ABM8-24.000MHZ-B2-T is a plausible 24 MHz, 18 pF-load choice. ±20 ppm initial tolerance is not the entire temperature/aging error budget.
+Two 27 pF capacitors give 13.5 pF before stray capacitance. With an assumed 3 pF stray, that is 16.5 pF, not 18 pF.
+R5 already acknowledges this. Choose final values from estimated board/IC parasitics and validate.
+
+Source: https://abracon.com/Resonators/abm8.pdf
+
+--------------------------------------------------------------------------------
+P10 Documentation and BOM hygiene
+--------------------------------------------------------------------------------
+- Declare R5 the sole active BOM. Mark the introduction and the older 4-port workbook obsolete.
+  The introduction's "schematic review complete" and references to artifacts not in the tree are stale.
+- Fix the support-sheet's U3→J3 / U4→J4 / U5→J5 misnumbering to J2 / J3 / J4.
+- Separate installed design quantities from assembly-spare / "reserve" capacitors. R5's 20x 10 uF pool includes ten reserve capacitors.
+- Check capacitor DC-bias curves, not just printed capacitance.
+- VCONN is automatic on qualifying cable attachments. "Active cables outside guarantee" does not prevent VCONN consumption; account for supported cables or constrain/test the use case.
+- Four-layer / 90 ohm coupon is a good direction, not a substitute for an actual controlled-impedance stackup calculation.
+- Existing dollar figures are unverified estimates; R5 correctly shows QUOTE REQUIRED. Finalize purchase quantities only after the decisions above.
+
+--------------------------------------------------------------------------------
+Recommended next steps
+--------------------------------------------------------------------------------
+1. Draw the power/control schematic first: startup, source-current qualification, port enable/fault, VBUS discharge, and reset.
+2. Decide whether restricted 500 mA peripherals and 3 A-only hosts are intentional, and how three-port reporting will be configured.
+3. Then draw the data-path schematic and select the fabrication stackup for controlled impedance.
+4. Only after those decisions, finalize purchase quantities and quotes.
+5. Library footprint/symbol audit remains necessary before schematic capture, but is tracked outside this file.
+
+References already listed above; do not treat this file as a compliance or bring-up sign-off.
